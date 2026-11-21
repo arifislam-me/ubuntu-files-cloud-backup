@@ -33,6 +33,20 @@ Google requires every app to have its own OAuth client. Create one once (about 5
 - Sign out in the menu revokes the token at Google.
 - If a changed file is uploaded again, Drive may replace its copy. Older versions follow Google's own version history.
 
+## Install from a release
+
+Download the `.deb` from the Releases page, then:
+
+```bash
+sudo apt install ./ubuntu-files-cloud-backup_*_all.deb
+```
+
+Google sign-in still needs your own OAuth client file, see [oauth-setup.md](oauth-setup.md). To publish a new release, push a version tag; GitHub Actions runs the tests, builds the `.deb`, and attaches it to the release:
+
+```bash
+git tag v1.0.0 && git push origin v1.0.0
+```
+
 ## Skipping folders you don't need
 
 When you add a folder, the app looks inside it (nested folders too) for things such as `.venv`, `node_modules`, `__pycache__` and `build`, and for items git ignores. You tick what to skip. Matching folders created later are skipped as well. Change the choice later with the list button on the folder card. Skipping stops new uploads only; items already in the cloud are never deleted. Note that `.env` files ignored by git are not backed up if you skip the `.gitignore` items.
