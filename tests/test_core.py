@@ -69,11 +69,21 @@ class SkipScanTests(unittest.TestCase):
 
     def test_rules_for_names_and_paths(self):
         rules = engine.build_excludes({"skip": {"names": [".venv"], "paths": ["a/build"]}}, self.root)
-        self.assertEqual(rules, [".venv/**", "/a/build/**"])
+        self.assertEqual(rules, ["- .venv/**", "- /a/build/**"])
 
     def test_rules_escape_glob_characters(self):
         rules = engine.build_excludes({"skip": {"paths": ["we[ir]d*dir"]}}, self.root)
-        self.assertEqual(rules, ["/we\\[ir\\]d\\*dir/**"])
+        self.assertEqual(rules, ["- /we\\[ir\\]d\\*dir/**"])
+
+    def test_scan_finds_secret_files_but_not_examples(self):
+        for rel in ("a/.env", "a/.env.example", "b/token.json", "a/id_rsa.pub", "a/notes.txt"):
+            (self.root / rel).write_text("x")
+        found = {item["path"] for item in engine.scan_skippable(str(self.root))["secrets"]}
+        self.assertEqual(found, {"a/.env", "b/token.json"})
+
+    def test_secret_rules_keep_examples_first(self):
+        rules = engine.build_excludes({"skip": {"secrets": True}}, self.root)
+        self.assertLess(rules.index("+ .env.example"), rules.index("- .env.*"))
 
     def test_no_skip_means_no_rules(self):
         self.assertEqual(engine.build_excludes({}, self.root), [])
