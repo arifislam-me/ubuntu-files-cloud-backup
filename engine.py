@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import fcntl
-import fnmatch
 import json
 import os
 import shutil
@@ -125,20 +124,6 @@ KNOWN_SKIP_DIRS = (".venv", "venv", "node_modules", "__pycache__", ".pytest_cach
 MAYBE_REAL_WORK = ("build", "dist", "target")
 
 
-# Files that usually hold passwords, tokens or private keys. Example/template files are kept.
-SECRET_PATTERNS = (".env", ".env.*", "credentials.json", "token.json", "client_secret*.json", "service-account*.json",
-                   "*.pem", "*.key", "*.p12", "*.pfx", "id_rsa", "id_rsa.*", "id_ed25519", "id_ed25519.*",
-                   "*.session", "secrets.*")
-SECRET_SAFE_NAMES = (".env.example", ".env.sample", ".env.template", ".env.dist")
-
-
-def is_secret_name(name: str) -> bool:
-    lower = name.lower()
-    if lower in SECRET_SAFE_NAMES or lower.endswith((".pub", ".example", ".sample")):
-        return False
-    return any(fnmatch.fnmatch(lower, pattern) for pattern in SECRET_PATTERNS)
-
-
 def _dir_stats(path: str) -> tuple[int, int]:
     files = size = 0
     for root, _dirs, names in os.walk(path):
@@ -152,22 +137,13 @@ def _dir_stats(path: str) -> tuple[int, int]:
     return files, size
 
 
-def _walk_repos(local: Path, prune: tuple[str, ...] = ()) -> tuple[list[Path], dict, list[dict]]:
-    """Walk the folder once: git repositories, known skippable folders (nested too) and secret-looking files."""
+def _walk_repos(local: Path, prune: tuple[str, ...] = ()) -> tuple[list[Path], dict]:
+    """Walk the folder once: return git repositories and the known skippable folders found (nested too)."""
     repos: list[Path] = []
     groups: dict[str, list[dict]] = {}
-    secrets: list[dict] = []
     for root, dirs, files in os.walk(local):
         if ".git" in dirs or ".git" in files:
             repos.append(Path(root))
-        for name in files:
-            if is_secret_name(name):
-                full = os.path.join(root, name)
-                try:
-                    size = os.lstat(full).st_size
-                except OSError:
-                    size = 0
-                secrets.append({"path": os.path.relpath(full, local).replace(os.sep, "/"), "files": 1, "bytes": size})
         keep = []
         for name in dirs:
             full = os.path.join(root, name)
@@ -180,7 +156,7 @@ def _walk_repos(local: Path, prune: tuple[str, ...] = ()) -> tuple[list[Path], d
             else:
                 keep.append(name)
         dirs[:] = keep
-    return repos, groups, secrets
+    return repos, groups
 
 
 def git_ignored(repo: Path) -> list[str]:
@@ -198,9 +174,9 @@ def git_ignored(repo: Path) -> list[str]:
 def scan_skippable(local: str) -> dict:
     """Look inside a folder for things to skip. Returns groups (by folder name), git repos and ignored-item count."""
     root = Path(local).expanduser().resolve()
-    repos, groups, secrets = _walk_repos(root)
+    repos, groups = _walk_repos(root)
     ignored = sum(len(git_ignored(repo)) for repo in repos)
-    return {"groups": groups, "repos": len(repos), "ignored": ignored, "secrets": secrets}
+    return {"groups": groups, "repos": len(repos), "ignored": ignored}
 
 
 def _escape(text: str) -> str:
@@ -208,22 +184,17 @@ def _escape(text: str) -> str:
 
 
 def build_excludes(pair: dict, local: Path) -> list[str]:
-    """rclone filter lines ("+ " keep, "- " skip) for one folder pair, from its saved skip choices."""
+    """rclone exclude rules for one folder pair, from its saved skip choices."""
     skip = pair.get("skip") or {}
-    rules = []
-    if skip.get("secrets"):
-        rules += [f"+ {_escape(name)}" for name in SECRET_SAFE_NAMES] + ["+ *.pub"]
-        rules += [f"- {pattern}" for pattern in SECRET_PATTERNS]
-    rules += [f"- /{_escape(path)}" for path in skip.get("secret_paths", [])]
-    rules += [f"- {_escape(name)}/**" for name in skip.get("names", [])]
-    rules += [f"- /{_escape(path)}/**" for path in skip.get("paths", [])]
+    rules = [f"{_escape(name)}/**" for name in skip.get("names", [])]
+    rules += [f"/{_escape(path)}/**" for path in skip.get("paths", [])]
     if skip.get("git"):
-        repos, _groups, _secrets = _walk_repos(local, prune=tuple(skip.get("names", [])))
+        repos, _ = _walk_repos(local, prune=tuple(skip.get("names", [])))
         for repo in repos:
             rel = os.path.relpath(repo, local).replace(os.sep, "/")
             for entry in git_ignored(repo):
                 path = entry if rel == "." else f"{rel}/{entry}"
-                rules.append(f"- /{_escape(path.rstrip('/'))}/**" if entry.endswith("/") else f"- /{_escape(path)}")
+                rules.append(f"/{_escape(path.rstrip('/'))}/**" if entry.endswith("/") else f"/{_escape(path)}")
     return rules
 
 
@@ -286,7 +257,7 @@ def sync_pair(settings: dict, pair: dict, dry_run: bool = False) -> tuple[int, s
     if rules:
         rules_file = APP_DIR / f"excludes-{pair['id']}.txt"
         rules_file.write_text("\n".join(rules) + "\n")
-        args.extend(["--filter-from", str(rules_file)])
+        args.extend(["--exclude-from", str(rules_file)])
     report_path = None
     if dry_run:
         report = tempfile.NamedTemporaryFile(prefix="preview-", suffix=".txt", dir=APP_DIR, delete=False)

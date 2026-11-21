@@ -576,7 +576,7 @@ def run_gui() -> int:
 
         def after_scan(self, scan, account_id, local, destination):
             self.busy = False
-            if isinstance(scan, Exception) or (not scan["groups"] and not scan["ignored"] and not scan["secrets"]):
+            if isinstance(scan, Exception) or (not scan["groups"] and not scan["ignored"]):
                 self.add_pair(account_id, local, destination, {})
                 return
             self.open_skip_dialog(scan, None, "Add and start backup",
@@ -608,7 +608,7 @@ def run_gui() -> int:
             if not pair or isinstance(scan, Exception):
                 self.alert("Scan failed", str(scan))
                 return
-            if not scan["groups"] and not scan["ignored"] and not scan["secrets"]:
+            if not scan["groups"] and not scan["ignored"]:
                 self.toast("Nothing to skip was found in this folder")
                 return
 
@@ -655,35 +655,23 @@ def run_gui() -> int:
                 group.add(row)
                 page.add(group)
 
-            entries = []
-            if scan["secrets"]:
-                entries.append(("__secrets__", scan["secrets"]))
-            entries += [(n, scan["groups"][n]) for n in sorted(
-                scan["groups"], key=lambda n: -sum(loc["bytes"] for loc in scan["groups"][n]))]
-            if entries:
+            if scan["groups"]:
                 group = Adw.PreferencesGroup(title="Found in this folder",
                                              description="Ticked items are not uploaded. Matching folders created later are skipped too.")
-                for name, locs_data in entries:
-                    is_secret = name == "__secrets__"
-                    if is_secret:
-                        expander = Adw.ExpanderRow(
-                            title="Secrets and keys",
-                            subtitle=f"{files_text(len(locs_data))} that usually hold passwords or tokens (.env, token.json, keys). Matching files added later are skipped too.")
-                        expander.set_subtitle_lines(3)
-                    else:
-                        expander = Adw.ExpanderRow(
-                            title=name, subtitle=f"{len(locs_data)} place" + ("" if len(locs_data) == 1 else "s") + f" · {files_text(sum(l['files'] for l in locs_data))}")
+                order = sorted(scan["groups"], key=lambda n: -sum(loc["bytes"] for loc in scan["groups"][n]))
+                for name in order:
+                    locs_data = scan["groups"][name]
+                    expander = Adw.ExpanderRow(
+                        title=name, subtitle=f"{len(locs_data)} place" + ("" if len(locs_data) == 1 else "s") + f" · {files_text(sum(l['files'] for l in locs_data))}")
                     expander.add_suffix(Gtk.Label(label=human_size(sum(l["bytes"] for l in locs_data)),
                                                   css_classes=["dim-label"]))
-                    default_on = is_secret or name not in MAYBE_REAL_WORK
+                    default_on = name not in MAYBE_REAL_WORK
                     group_check = Gtk.CheckButton(valign=Gtk.Align.CENTER)
                     expander.add_prefix(group_check)
                     loc_checks = []
                     for loc in locs_data:
                         if initial is None:
                             active = default_on
-                        elif is_secret:
-                            active = bool(initial.get("secrets")) or loc["path"] in initial.get("secret_paths", [])
                         else:
                             active = name in initial.get("names", []) or loc["path"] in initial.get("paths", [])
                         sub = Adw.ActionRow(title=loc["path"], subtitle=f"{files_text(loc['files'])} · {human_size(loc['bytes'])}")
@@ -728,12 +716,7 @@ def run_gui() -> int:
                 skip = {"names": [], "paths": [], "git": bool(git_check is not None and git_check.get_active())}
                 for name, (_gc, locs) in checks.items():
                     chosen = [loc["path"] for chk, loc in locs if chk.get_active()]
-                    if name == "__secrets__":
-                        if len(chosen) == len(locs):
-                            skip["secrets"] = True
-                        else:
-                            skip["secret_paths"] = chosen
-                    elif len(chosen) == len(locs):
+                    if len(chosen) == len(locs):
                         skip["names"].append(name)
                     else:
                         skip["paths"].extend(chosen)

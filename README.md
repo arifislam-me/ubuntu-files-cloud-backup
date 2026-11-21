@@ -35,7 +35,7 @@ Google requires every app to have its own OAuth client. Create one once (about 5
 
 ## Skipping folders you don't need
 
-When you add a folder, the app looks inside it (nested folders too) for things such as `.venv`, `node_modules`, `__pycache__` and `build`, and for items git ignores. You tick what to skip. Matching folders created later are skipped as well. Change the choice later with the list button on the folder card. Skipping stops new uploads only; items already in the cloud are never deleted. The dialog also lists files that usually hold secrets (`.env`, `token.json`, `credentials.json`, private keys; example files such as `.env.example` are not listed). They are ticked by default, so they are not uploaded unless you untick them. Items skipped through `.gitignore` include git-ignored `.env` files too.
+When you add a folder, the app looks inside it (nested folders too) for things such as `.venv`, `node_modules`, `__pycache__` and `build`, and for items git ignores. You tick what to skip. Matching folders created later are skipped as well. Change the choice later with the list button on the folder card. Skipping stops new uploads only; items already in the cloud are never deleted. Note that `.env` files ignored by git are not backed up if you skip the `.gitignore` items.
 
 ## Background and tray icon
 
