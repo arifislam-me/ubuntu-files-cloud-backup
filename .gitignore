@@ -1,0 +1,5 @@
+brief.md
+__pycache__/
+*.pyc
+.pytest_cache/
+logo-options/
